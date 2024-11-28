@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase_version9_RealtimeDB(G'sACADEMY初学者用サンプル)</title>
+    <link rel="stylesheet" href="css/reset.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <h1>電話対応管理ツール ～ 電話対応を簡単に記録・管理 ～</h1>
+    <!-- コンテンツ表示画面 -->
+    <div>
+        <div>
+            <input type="text" id="uname" placeholder="日付、時間、件名を入力してください。">
+        </div>
+        <div>
+            <textarea id="text" placeholder="内容を入力してください。改行する場合には、shift + Enterをおしてください。"></textarea>
+        </div>
+        <button id="send">保 存</button>
+        <div id="output"></div>
+    </div>
+
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.1.0/firebase-app.js";
+        import { getDatabase, ref, push, set, onChildAdded, remove, onChildRemoved }
+            from "https://www.gstatic.com/firebasejs/9.1.0/firebase-database.js";
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+
+            };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app); //RealtimeDBに接続
+        const dbRef = ref(db, "chat"); //RealtimeDB内の"chat"を使う
+        
+    // 新規保存または編集保存
+    document.getElementById("send").addEventListener("click", () => {
+        const uname = document.getElementById("uname").value.trim();
+        const text = document.getElementById("text").value.trim();
+        const editingKey = document.getElementById("send").dataset.editingKey; // 編集対象のキーを取得
+
+        console.log("送信ボタンがクリックされました");
+        console.log("日時:", uname);
+        console.log("内容:", text);
+        console.log("編集対象キー:", editingKey);
+
+        if (uname && text) {
+            if (editingKey) {
+                // 編集の場合: 既存データを上書き
+                set(ref(db, "chat/" + editingKey), {
+                    uname: uname,
+                    text: text
+                })
+                    .then(() => {
+                        document.getElementById("uname").value = "";
+                        document.getElementById("text").value = "";
+                        document.getElementById("send").removeAttribute("data-editing-key"); // 編集モード解除
+                        alert("データが更新されました。");
+
+                        // 編集した内容を画面に反映
+                        const updatedElement = document.getElementById(editingKey);
+                        if (updatedElement) {
+                            updatedElement.querySelector('p').innerHTML = `${uname}<br>${text.replace(/\n/g, "<br>")}`;
+                        }
+                        console.log("データが更新されました:", uname, text);
+                    })
+                    .catch((error) => {
+                        alert("データの更新に失敗しました: " + error.message);
+                        console.log("更新エラー:", error.message);
+                    });
+            } else {
+                // 新規の場合
+                const newPostRef = push(ref(db, "chat/"));
+                set(newPostRef, {
+                    uname: uname,
+                    text: text
+                })
+                    .then(() => {
+                        document.getElementById("uname").value = "";
+                        document.getElementById("text").value = "";
+                        console.log("新しいデータが保存されました:", uname, text);
+                    })
+                    .catch((error) => {
+                        alert("データの保存に失敗しました: " + error.message);
+                        console.log("保存エラー:", error.message);
+                    });
+            }
+        } else {
+            alert("日時と内容を入力してください。");
+        }
+    });
+
+    // 既存データの表示、更新後に変更を反映
+    onChildAdded(dbRef, (snapshot) => {
+        const key = snapshot.key;
+        const data = snapshot.val();
+
+        console.log("新しいデータが追加されました:", data);
+
+        // 既存があれば削除
+        let existingElement = document.getElementById(key);
+        if (existingElement) {
+            existingElement.remove();
+        }
+
+        const newElement = document.createElement("div");
+        newElement.id = key;
+        newElement.innerHTML = `
+        <p>${data.uname}<br>${data.text.replace(/\n/g, "<br>")}</p>
+        <button class="edit-btn" data-key="${key}" data-uname="${data.uname}" data-text="${data.text}">編集</button>
+        <button class="delete-btn" data-key="${key}">削除</button>
+    `;
+        document.getElementById("output").appendChild(newElement);
+    });
+
+    // データ削除を画面に反映
+    onChildRemoved(dbRef, (snapshot) => {
+        const key = snapshot.key;
+        const element = document.getElementById(key);
+        if (element) {
+            console.log("削除されたデータ:", key);
+            element.remove(); // 画面から削除
+        }
+    });
+
+    // 編集ボタンの処理
+    document.addEventListener("click", (e) => {
+        if (e.target.classList.contains("edit-btn")) {
+            const key = e.target.dataset.key;
+            const uname = e.target.dataset.uname;
+            const text = e.target.dataset.text;
+
+            console.log("編集ボタンがクリックされました:", key, uname, text);
+
+            document.getElementById("uname").value = uname;
+            document.getElementById("text").value = text;
+            document.getElementById("send").dataset.editingKey = key; // 編集中のキーを設定
+        }
+    });
+
+    // 削除ボタンの処理
+    document.addEventListener("click", (e) => {
+        if (e.target.classList.contains("delete-btn")) {
+            const key = e.target.dataset.key;
+            console.log("削除ボタンがクリックされました:", key);
+
+            remove(ref(db, "chat/" + key))
+                .then(() => {
+                    alert("データが削除されました。");
+                })
+                .catch((error) => {
+                    alert("データの削除に失敗しました: " + error.message);
+                    console.log("削除エラー:", error.message);
+                });
+        }
+    });
+
+    // 編集後のデータ更新を反映させる
+    onChildChanged(dbRef, (snapshot) => {
+        const key = snapshot.key;
+        const data = snapshot.val();
+
+        console.log("データが変更されました:", key, data);
+
+        // 変更後に更新
+        const element = document.getElementById(key);
+        if (element) {
+            const pTag = element.querySelector('p');
+            if (pTag) {
+                pTag.innerHTML = `${data.uname}<br>${data.text.replace(/\n/g, "<br>")}`;
+            }
+        }
+    });
+
+
+    </script>
+</body>
+
+</html>
